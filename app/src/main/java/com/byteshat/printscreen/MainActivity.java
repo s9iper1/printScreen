@@ -1,14 +1,19 @@
 package com.byteshat.printscreen;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Environment;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
@@ -24,6 +29,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button mPrintScreenButton;
     private Button mPrint30Button;
     private Button mStop30Button;
+    private MediaProjectionManager mgr;
+    private static final int REQUEST_SCREENSHOT=59706;
 
 
     private BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -45,6 +52,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mStop30Button.setOnClickListener(this);
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_SCREENSHOT) {
+            if (resultCode == RESULT_OK) {
+                Intent i =
+                        new Intent(this, BackgroundService.class)
+                                .putExtra(BackgroundService.EXTRA_RESULT_CODE, resultCode)
+                                .putExtra(BackgroundService.EXTRA_RESULT_INTENT, data);
+
+                startService(i);
+            }
+        }
+    }
+
 
     @Override
     public void onClick(View v) {
@@ -53,18 +74,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 takeScreenshot();
                 break;
             case R.id.print_screen_30:
-                Intent repeatTimerIntent = new Intent(getApplicationContext(), BackgroundService.class);
-                repeatTimerIntent.setAction(BackgroundService.ACTION_START_FOREGROUND_SERVICE);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(repeatTimerIntent);
-                    registerReceiver(receiver, new IntentFilter(BackgroundService.ACTION_START_FOREGROUND_SERVICE));
-                } else {
-                    startService(repeatTimerIntent);
+                if (isStoragePermissionGranted()) {
+                    mgr = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+                    startActivityForResult(mgr.createScreenCaptureIntent(),
+                            REQUEST_SCREENSHOT);
                 }
                 break;
             case R.id.print_screen_stop:
                 Intent stopIntent = new Intent(MainActivity.this, BackgroundService.class);
-                stopIntent.setAction(BackgroundService.ACTION_STOP_FOREGROUND_SERVICE);
                 startService(stopIntent);
                 unregisterReceiver(receiver);
                 break;
@@ -73,10 +90,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     }
 
+    public boolean isStoragePermissionGranted() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                return true;
+            } else {
+
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+                return false;
+            }
+        } else { //permission is automatically granted on sdk<23 upon installation
+            return true;
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(receiver);
+//        unregisterReceiver(receiver);
     }
 
     private void takeScreenshot() {
